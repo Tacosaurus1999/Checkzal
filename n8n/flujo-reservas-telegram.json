@@ -1,0 +1,772 @@
+{
+  "name": "Reservas por Telegram (PMS)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Reservas por Telegram → API del PMS\nEl bot pregunta nombre, apellidos, correo, fechas y habitación, y registra huésped + reserva llamando a la API del proyecto (no escribe SQL directo, así se respetan las validaciones y el 409 por sobreventa).\n\nAntes de usarlo: crear credenciales (Telegram, \"PMS - cuenta de servicio n8n\" y SMTP) y **publicar** el flujo (el estado de la conversación solo se guarda con el flujo activo).",
+        "height": 220,
+        "width": 520
+      },
+      "id": "nodo-001",
+      "name": "Nota",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "nodo-002",
+      "name": "Mensaje de Telegram",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "c0000000-0000-4000-8000-000000000001",
+      "credentials": {
+        "telegramApi": {
+          "id": "<ID_CREDENCIAL>",
+          "name": "Telegram - Bot de reservas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Máquina de estados de la conversación (una sesión por chat de Telegram).\n// El estado vive en los datos estáticos del flujo (solo persisten con el flujo PUBLICADO).\nconst msg = $input.first().json.message || {};\nconst chatId = msg.chat && msg.chat.id;\nconst texto = (msg.text || '').trim();\nconst nombreTg = (msg.from && msg.from.first_name) || '';\nconst store = $getWorkflowStaticData('global');\nstore.sesiones = store.sesiones || {};\n\nconst responder = (accion, textoRespuesta, extra = {}) => [{ json: { chat_id: chatId, accion, texto: textoRespuesta, ...extra } }];\n\nconst hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());\n\nfunction fechaISO(t) {\n  let iso = null;\n  let m = /^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/.exec(t);\n  if (m) iso = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;\n  m = /^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})$/.exec(t);\n  if (m) iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;\n  if (!iso) return null;\n  const d = new Date(`${iso}T00:00:00Z`);\n  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso ? null : iso;\n}\nconst noches = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);\nconst mxn = (n) => `$${Number(n).toFixed(2)} MXN`;\n\nif (!chatId || !msg.text) {\n  return responder('preguntar', 'Envíame un mensaje de texto, por favor. Escribe /reservar para empezar.');\n}\n\nconst cmd = texto.toLowerCase();\nlet s = store.sesiones[chatId];\nif (s && Date.now() - s.ts > 30 * 60 * 1000) s = null; // sesión inactiva > 30 min\n\nif (cmd === '/cancelar') {\n  delete store.sesiones[chatId];\n  return responder('preguntar', 'Reserva cancelada. Escribe /reservar cuando quieras empezar de nuevo.');\n}\n\nif (cmd === '/start' || cmd === '/reservar' || !s) {\n  store.sesiones[chatId] = { paso: 'nombre', datos: {}, ts: Date.now() };\n  return responder('preguntar',\n    `Hola ${nombreTg}. Soy el bot de reservas del hotel. Te haré unas preguntas para registrar tu reserva (en cualquier momento escribe /cancelar).\\n\\n¿Cuál es tu nombre (o nombres)?`);\n}\n\ns.ts = Date.now();\nconst d = s.datos;\n\nswitch (s.paso) {\n  case 'nombre':\n    if (texto.length < 2 || texto.length > 80) return responder('preguntar', 'Escribe tu nombre (entre 2 y 80 caracteres).');\n    d.nombre = texto;\n    s.paso = 'apellidos';\n    return responder('preguntar', '¿Y tus apellidos?');\n\n  case 'apellidos':\n    if (texto.length < 2 || texto.length > 100) return responder('preguntar', 'Escribe tus apellidos (entre 2 y 100 caracteres).');\n    d.apellidos = texto;\n    s.paso = 'correo';\n    return responder('preguntar', '¿Cuál es tu correo electrónico? (ahí te enviaremos la confirmación)');\n\n  case 'correo':\n    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(texto)) return responder('preguntar', 'Ese correo no parece válido. Ejemplo: nombre@correo.com');\n    d.email = texto.toLowerCase();\n    s.paso = 'entrada';\n    return responder('preguntar', '¿Qué día llegas? Escribe la fecha como AAAA-MM-DD (por ejemplo 2026-12-20) o DD/MM/AAAA.');\n\n  case 'entrada': {\n    const f = fechaISO(texto);\n    if (!f) return responder('preguntar', 'No entendí la fecha. Usa AAAA-MM-DD (2026-12-20) o DD/MM/AAAA.');\n    if (f < hoy) return responder('preguntar', 'La fecha de llegada no puede ser anterior a hoy. Intenta con otra.');\n    d.entrada = f;\n    s.paso = 'salida';\n    return responder('preguntar', '¿Qué día te vas? (misma forma: AAAA-MM-DD)');\n  }\n\n  case 'salida': {\n    const f = fechaISO(texto);\n    if (!f) return responder('preguntar', 'No entendí la fecha. Usa AAAA-MM-DD (2026-12-23) o DD/MM/AAAA.');\n    if (f <= d.entrada) return responder('preguntar', `La salida debe ser después de la llegada (${d.entrada}). Intenta de nuevo.`);\n    if (noches(d.entrada, f) > 30) return responder('preguntar', 'Por este medio solo se reservan hasta 30 noches. Escribe otra fecha de salida.');\n    d.salida = f;\n    s.paso = 'habitacion';\n    return responder('disponibilidad', '', { datos: { ...d } }); // el flujo consulta la API y arma la lista\n  }\n\n  case 'habitacion': {\n    const numero = texto.replace(/^hab(itaci[oó]n)?\\s*/i, '').trim();\n    const hab = (s.disponibles || []).find((h) => String(h.numero).toLowerCase() === numero.toLowerCase());\n    if (!hab) {\n      const lista = (s.disponibles || []).map((h) => h.numero).join(', ');\n      return responder('preguntar', `No encontré esa habitación. Elige una de estas: ${lista}.`);\n    }\n    d.habitacionId = hab.habitacionId;\n    d.numero = hab.numero;\n    d.tipo = hab.tipo;\n    d.numAdultos = Math.min(2, hab.capacidad);\n    d.total = noches(d.entrada, d.salida) * hab.precioBase;\n    s.paso = 'confirmar';\n    return responder('preguntar',\n      `Confirma tu reserva:\\n👤 ${d.nombre} ${d.apellidos}\\n📧 ${d.email}\\n🛏️ Habitación ${d.numero} (${d.tipo}) para ${d.numAdultos} adulto(s)\\n📅 Entrada: ${d.entrada}\\n📅 Salida: ${d.salida} (${noches(d.entrada, d.salida)} noche(s))\\n💰 Total: ${mxn(d.total)}\\n\\nResponde SI para confirmar o /cancelar.`);\n  }\n\n  case 'confirmar':\n    if (['si', 'sí', 's', 'confirmo', 'confirmar'].includes(cmd)) {\n      delete store.sesiones[chatId];\n      return responder('registrar', '', { datos: { ...d, telegramChatId: chatId } });\n    }\n    if (cmd === 'no') {\n      delete store.sesiones[chatId];\n      return responder('preguntar', 'De acuerdo, no registré nada. Escribe /reservar para empezar de nuevo.');\n    }\n    return responder('preguntar', 'Responde SI para confirmar o NO / /cancelar para salir.');\n\n  default:\n    delete store.sesiones[chatId];\n    return responder('preguntar', 'Algo salió mal. Escribe /reservar para empezar de nuevo.');\n}\n"
+      },
+      "id": "nodo-003",
+      "name": "Conversación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "nodo-004",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "preguntar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "preguntar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "nodo-005",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "disponibilidad",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "disponibilidad"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "nodo-006",
+                    "leftValue": "={{ $json.accion }}",
+                    "rightValue": "registrar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "registrar"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "nodo-007",
+      "name": "¿Qué hacer?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.texto }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "nodo-008",
+      "name": "Preguntar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        700,
+        -220
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "<ID_CREDENCIAL>",
+          "name": "Telegram - Bot de reservas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:4000/api/auth/login",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "options": {}
+      },
+      "id": "nodo-009",
+      "name": "Login PMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "nodo-010",
+              "leftValue": "={{ $('Conversación').first().json.accion }}",
+              "rightValue": "disponibilidad",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "nodo-011",
+      "name": "¿Es consulta de disponibilidad?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        920,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:4000/api/disponibilidad",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.token }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "entrada",
+              "value": "={{ $('Conversación').first().json.datos.entrada }}"
+            },
+            {
+              "name": "salida",
+              "value": "={{ $('Conversación').first().json.datos.salida }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "nodo-012",
+      "name": "Consultar disponibilidad",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1160,
+        -120
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Arma la lista de habitaciones libres y la guarda en la sesión para validar la elección.\nconst chatId = $('Conversación').first().json.chat_id;\nconst store = $getWorkflowStaticData('global');\nstore.sesiones = store.sesiones || {};\nconst s = store.sesiones[chatId];\nconst libres = $input.all().map((i) => i.json).filter((h) => h && h.habitacionId !== undefined);\n\nif (!s) return [{ json: { chat_id: chatId, texto: 'La sesión expiró. Escribe /reservar para empezar de nuevo.' } }];\n\nif (libres.length === 0) {\n  s.paso = 'entrada';\n  return [{ json: { chat_id: chatId, texto: 'No hay habitaciones libres en esas fechas 😕. Escribe otra fecha de llegada (AAAA-MM-DD) o /cancelar.' } }];\n}\n\ns.disponibles = libres;\nconst d = s.datos;\nconst n = Math.round((Date.parse(`${d.salida}T00:00:00Z`) - Date.parse(`${d.entrada}T00:00:00Z`)) / 86400000);\nconst filas = libres.map((h) => `🛏️ ${h.numero} · ${h.tipo} · hasta ${h.capacidad} pers. · $${Number(h.precioBase).toFixed(2)}/noche`);\nreturn [{ json: { chat_id: chatId, texto: `Habitaciones libres del ${d.entrada} al ${d.salida} (${n} noche(s)):\\n\\n${filas.join('\\n')}\\n\\nEscribe el número de la habitación que quieres (por ejemplo 101).` } }];\n"
+      },
+      "id": "nodo-013",
+      "name": "Armar lista de habitaciones",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1380,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.texto }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "nodo-014",
+      "name": "Enviar lista",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1600,
+        -120
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "<ID_CREDENCIAL>",
+          "name": "Telegram - Bot de reservas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:4000/api/huespedes",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.token }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Conversación').first().json.datos.email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "nodo-015",
+      "name": "Buscar huésped por correo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1160,
+        200
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const email = $('Conversación').first().json.datos.email;\nconst existente = $input.all().map((i) => i.json).find((g) => g && g.email === email);\nreturn [{ json: { huespedId: existente ? existente.id : null } }];"
+      },
+      "id": "nodo-016",
+      "name": "Resolver huésped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1380,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "nodo-017",
+              "leftValue": "={{ $json.huespedId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "nodo-018",
+      "name": "¿Huésped ya existe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1600,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:4000/api/huespedes",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ nombre: $('Conversación').first().json.datos.nombre, apellidos: $('Conversación').first().json.datos.apellidos, email: $('Conversación').first().json.datos.email, telegramChatId: $('Conversación').first().json.datos.telegramChatId }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "nodo-019",
+      "name": "Crear huésped",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1820,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const prev = $input.first().json;\nconst d = $('Conversación').first().json.datos;\nconst huespedId = prev.huespedId != null ? prev.huespedId : (prev.body && prev.body.id);\nreturn [{ json: { reserva: {\n  huespedId,\n  fechaEntrada: d.entrada,\n  fechaSalida: d.salida,\n  numAdultos: d.numAdultos,\n  origen: 'telegram',\n  estado: 'pendiente',\n  notas: 'Reserva hecha por el bot de Telegram',\n  habitaciones: [{ habitacionId: d.habitacionId }],\n} } }];"
+      },
+      "id": "nodo-020",
+      "name": "Preparar reserva",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2040,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:4000/api/reservas",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.reserva) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "nodo-021",
+      "name": "Crear reserva",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "nodo-022",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 201,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "nodo-023",
+      "name": "¿Reserva creada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2480,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Conversación').first().json.chat_id }}",
+        "text": "={{ '✅ ¡Reserva registrada!\\n🔖 Código: ' + $json.body.codigo + '\\n👤 ' + $('Conversación').first().json.datos.nombre + ' ' + $('Conversación').first().json.datos.apellidos + '\\n🛏️ Habitación ' + $('Conversación').first().json.datos.numero + ' (' + $('Conversación').first().json.datos.tipo + ')\\n📅 Entrada: ' + $('Conversación').first().json.datos.entrada + '\\n📅 Salida: ' + $('Conversación').first().json.datos.salida + '\\n💰 Total: $' + Number($json.body.total).toFixed(2) + ' MXN\\n📌 Estado: pendiente (recepción la confirmará)\\n\\n📧 Te enviamos la confirmación a ' + $('Conversación').first().json.datos.email }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "nodo-024",
+      "name": "Responder: reserva registrada",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2720,
+        120
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "<ID_CREDENCIAL>",
+          "name": "Telegram - Bot de reservas"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "Hotel Casa Jaguar <tu_correo@gmail.com>",
+        "toEmail": "={{ $('Conversación').first().json.datos.email }}",
+        "subject": "={{ 'Confirmación de reserva ' + $('Crear reserva').first().json.body.codigo }}",
+        "emailFormat": "text",
+        "text": "={{ 'Hola ' + $('Conversación').first().json.datos.nombre + ',\\n\\nRecibimos tu solicitud de reserva en Hotel Boutique Casa Jaguar.\\n\\nCódigo: ' + $('Crear reserva').first().json.body.codigo + '\\nHabitación: ' + $('Conversación').first().json.datos.numero + ' (' + $('Conversación').first().json.datos.tipo + ')\\nEntrada: ' + $('Conversación').first().json.datos.entrada + '\\nSalida: ' + $('Conversación').first().json.datos.salida + '\\nTotal: $' + Number($('Crear reserva').first().json.body.total).toFixed(2) + ' MXN\\nEstado: pendiente de confirmación\\n\\nPuedes consultar tu reserva escribiendo el código al bot del hotel.\\n\\nGracias por elegirnos.' }}",
+        "options": {}
+      },
+      "id": "nodo-025",
+      "name": "Enviar correo de confirmación",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2940,
+        120
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "smtp": {
+          "id": "<ID_CREDENCIAL>",
+          "name": "SMTP - correo del hotel"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Conversación').first().json.chat_id }}",
+        "text": "={{ $json.statusCode === 409 ? '😕 Esa habitación ya no está disponible para esas fechas (alguien la acaba de reservar). Escribe /reservar para intentar de nuevo.' : '⚠️ No pude registrar la reserva: ' + (($json.body && $json.body.error) || 'error inesperado') + '. Escribe /reservar para intentar de nuevo.' }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "nodo-026",
+      "name": "Responder: error al reservar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2720,
+        300
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "<ID_CREDENCIAL>",
+          "name": "Telegram - Bot de reservas"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Mensaje de Telegram": {
+      "main": [
+        [
+          {
+            "node": "Conversación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversación": {
+      "main": [
+        [
+          {
+            "node": "¿Qué hacer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Qué hacer?": {
+      "main": [
+        [
+          {
+            "node": "Preguntar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Login PMS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Login PMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login PMS": {
+      "main": [
+        [
+          {
+            "node": "¿Es consulta de disponibilidad?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Es consulta de disponibilidad?": {
+      "main": [
+        [
+          {
+            "node": "Consultar disponibilidad",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar huésped por correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar disponibilidad": {
+      "main": [
+        [
+          {
+            "node": "Armar lista de habitaciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar lista de habitaciones": {
+      "main": [
+        [
+          {
+            "node": "Enviar lista",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar huésped por correo": {
+      "main": [
+        [
+          {
+            "node": "Resolver huésped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolver huésped": {
+      "main": [
+        [
+          {
+            "node": "¿Huésped ya existe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Huésped ya existe?": {
+      "main": [
+        [
+          {
+            "node": "Preparar reserva",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Crear huésped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear huésped": {
+      "main": [
+        [
+          {
+            "node": "Preparar reserva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar reserva": {
+      "main": [
+        [
+          {
+            "node": "Crear reserva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear reserva": {
+      "main": [
+        [
+          {
+            "node": "¿Reserva creada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Reserva creada?": {
+      "main": [
+        [
+          {
+            "node": "Responder: reserva registrada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder: error al reservar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder: reserva registrada": {
+      "main": [
+        [
+          {
+            "node": "Enviar correo de confirmación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

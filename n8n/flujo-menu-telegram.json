@@ -1,0 +1,1435 @@
+{
+  "name": "Bot de reservas con menú (Telegram)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Bot de reservas (menú) — Telegram + n8n + API del PMS\nMenú: **Reservar · Ver mi reserva (y confirmarla si está pendiente) · Cancelar mi reserva**. Respuestas predefinidas, sin agente de IA.\n\n1. Edita el nodo **Configuración** (token del bot, URL y cuenta de servicio del PMS).\n2. Si ya tienes otro flujo leyendo este mismo bot, **desactívalo** (dos flujos no pueden leer el mismo bot).\n3. El correo con el QR lo envía el paso *Enviar correo con QR* a través del PMS (configura SMTP_* en backend/.env); aquí no hace falta credencial de correo.\n4. **Publica** este flujo: el estado de la conversación solo se guarda con el flujo activo.\n\nProcesa un mensaje por vuelta (cada 5 s) y lo confirma en Telegram de inmediato. Recomendado: iniciar n8n con N8N_CONCURRENCY_PRODUCTION_LIMIT=1.",
+        "height": 280,
+        "width": 560
+      },
+      "id": "n01",
+      "name": "Nota",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "n02",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "n03",
+              "name": "token",
+              "type": "string",
+              "value": "<TOKEN_DEL_BOT>"
+            },
+            {
+              "id": "n04",
+              "name": "pms_url",
+              "type": "string",
+              "value": "http://localhost:4000/api"
+            },
+            {
+              "id": "n05",
+              "name": "pms_email",
+              "type": "string",
+              "value": "n8n@casajaguar.mx"
+            },
+            {
+              "id": "n06",
+              "name": "pms_password",
+              "type": "string",
+              "value": "CambiaEstaClaveN8n1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n07",
+      "name": "Configuración",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "try {\nconst store = $getWorkflowStaticData('global');\nreturn [{ json: { offset: store.offset || 0 } }];\n} catch (e) {\n  let chat = null;\n  try { chat = $('Conversación').first().json.chat_id; } catch (_) {}\n  return [{ json: { chat_id: chat, texto: '⚠️ Algo salió mal en el bot (' + (e && e.message) + '). Toca \"Menú\" para empezar de nuevo.', teclado: { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true } } }];\n}"
+      },
+      "id": "n08",
+      "name": "Obtener offset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.telegram.org/bot' + $('Configuración').first().json.token + '/getUpdates' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "offset",
+              "value": "={{ $json.offset }}"
+            },
+            {
+              "name": "timeout",
+              "value": "0"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            },
+            {
+              "name": "allowed_updates",
+              "value": "[\"message\"]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n09",
+      "name": "Telegram - Recibir",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Toma la respuesta de getUpdates y deja pasar UN mensaje por ejecución (el resto se pide en la siguiente vuelta).\nconst store = $getWorkflowStaticData('global');\nconst resp = $input.first().json;\nif (resp.ok === false) throw new Error(`Telegram respondió: ${resp.description || 'error'} (si dice \"webhook is active\", abre https://api.telegram.org/bot<TOKEN>/deleteWebhook una vez)`);\nconst updates = (resp.result || []).sort((a, b) => a.update_id - b.update_id);\nif (updates.length === 0) return [];\nconst u = updates[0];\nif (store.ultimo !== undefined && u.update_id <= store.ultimo) return []; // ya atendido: evita duplicados\nstore.ultimo = u.update_id;\nstore.offset = u.update_id + 1;\nconst m = u.message;\nif (!m || !m.chat) return [];\nreturn [{ json: { chat_id: m.chat.id, texto: m.text || '', nombre: (m.from && m.from.first_name) || '', update_id: u.update_id } }];\n"
+      },
+      "id": "n10",
+      "name": "Procesar mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.telegram.org/bot' + $('Configuración').first().json.token + '/getUpdates' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "offset",
+              "value": "={{ $('Procesar mensaje').first().json.update_id + 1 }}"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            },
+            {
+              "name": "timeout",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n11",
+      "name": "Confirmar mensaje en Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const MENU = { keyboard: [[{ text: 'Reservar' }], [{ text: 'Ver mi reserva' }], [{ text: 'Cancelar mi reserva' }]], resize_keyboard: true };\nconst FLUJO = { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true };\nconst ESTADOS = { pendiente: 'pendiente de confirmación', confirmada: 'confirmada', checkin: 'en curso (check-in)', checkout: 'finalizada', cancelada: 'cancelada', no_show: 'no se presentó' };\nconst mxn = (n) => `$${Number(n || 0).toFixed(2)} MXN`;\n\n// ---------------- Conversación: menú + reservar / ver / cancelar ----------------\nconst entrada = $('Procesar mensaje').first().json;\nconst chatId = entrada.chat_id;\nconst texto = (entrada.texto || '').trim();\nconst cmd = texto.toLowerCase();\nconst nombreTg = entrada.nombre || '';\nconst store = $getWorkflowStaticData('global');\nstore.sesiones = store.sesiones || {};\n\nconst r = (accion, t, extra = {}) => [{ json: { chat_id: chatId, accion, texto: t, ...extra } }];\nconst preguntar = (t) => r('responder', t, { teclado: FLUJO });\nconst menu = (t) => r('responder', t, { teclado: MENU });\nconst saludo = () => `¡Hola ${nombreTg}! 👋 Soy el asistente del Hotel Casa Jaguar.\\n¿Qué quieres hacer?\\n\\n1️⃣ Reservar\\n2️⃣ Ver mi reserva\\n3️⃣ Cancelar mi reserva\\n\\nToca un botón o responde con 1, 2 o 3.`;\n\nconst hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());\nfunction fechaISO(t) {\n  let iso = null;\n  let m = /^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/.exec(t);\n  if (m) iso = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;\n  m = /^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})$/.exec(t);\n  if (m) iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;\n  if (!iso) return null;\n  const d = new Date(`${iso}T00:00:00Z`);\n  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== iso ? null : iso;\n}\nconst noches = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);\nconst opcion = (c) => {\n  if (['1', 'reservar', '/reservar', 'hacer reserva', 'quiero reservar'].includes(c)) return 'reservar';\n  if (['2', 'ver mi reserva', 'ver reserva', 'ver', 'consultar', 'consultar reserva', '/ver'].includes(c)) return 'ver';\n  if (['3', 'cancelar mi reserva', 'cancelar reserva'].includes(c)) return 'cancelar';\n  return null;\n};\nconst PEDIR_CODIGO = { ver: '¿Cuál es el código de tu reserva? (8 caracteres, por ejemplo 5A570577)', cancelar: 'Para cancelar necesito el código de tu reserva (8 caracteres, por ejemplo 5A570577).' };\n\nif (!texto) return menu('Envíame un mensaje de texto, por favor.\\n\\n' + saludo());\n\n// Volver al menú desde cualquier punto\nif (['menu', 'menú', '/menu', '/start', '/salir', '/cancelar', 'salir', 'hola'].includes(cmd)) {\n  delete store.sesiones[chatId];\n  return menu(saludo());\n}\n\nlet s = store.sesiones[chatId];\nif (s && Date.now() - s.ts > 30 * 60 * 1000) s = null;\n\n// Sin conversación en curso: se interpreta la opción del menú\nif (!s) {\n  const op = opcion(cmd);\n  if (!op) return menu(saludo());\n  if (op === 'reservar') {\n    store.sesiones[chatId] = { op, paso: 'nombre', datos: {}, ts: Date.now() };\n    return preguntar('Perfecto, vamos a reservar 🛎️\\n\\n¿Cuál es tu nombre (o nombres)?');\n  }\n  store.sesiones[chatId] = { op, paso: 'codigo', datos: {}, ts: Date.now() };\n  return preguntar(PEDIR_CODIGO[op]);\n}\n\ns.ts = Date.now();\nconst d = s.datos;\n\nswitch (s.paso) {\n  // ----- Reservar -----\n  case 'nombre':\n    if (texto.length < 2 || texto.length > 80) return preguntar('Escribe tu nombre (entre 2 y 80 caracteres).');\n    d.nombre = texto; s.paso = 'apellidos';\n    return preguntar('¿Y tus apellidos?');\n  case 'apellidos':\n    if (texto.length < 2 || texto.length > 100) return preguntar('Escribe tus apellidos (entre 2 y 100 caracteres).');\n    d.apellidos = texto; s.paso = 'correo';\n    return preguntar('¿Cuál es tu correo electrónico? (ahí te enviaremos la confirmación)');\n  case 'correo':\n    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(texto)) return preguntar('Ese correo no parece válido. Ejemplo: nombre@correo.com');\n    d.email = texto.toLowerCase(); s.paso = 'entrada';\n    return preguntar('¿Qué día llegas? Escribe la fecha como AAAA-MM-DD (por ejemplo 2026-12-20) o DD/MM/AAAA.');\n  case 'entrada': {\n    const f = fechaISO(texto);\n    if (!f) return preguntar('No entendí la fecha. Usa AAAA-MM-DD (2026-12-20) o DD/MM/AAAA.');\n    if (f < hoy) return preguntar('La fecha de llegada no puede ser anterior a hoy. Intenta con otra.');\n    d.entrada = f; s.paso = 'salida';\n    return preguntar('¿Qué día te vas? (misma forma: AAAA-MM-DD)');\n  }\n  case 'salida': {\n    const f = fechaISO(texto);\n    if (!f) return preguntar('No entendí la fecha. Usa AAAA-MM-DD (2026-12-23) o DD/MM/AAAA.');\n    if (f <= d.entrada) return preguntar(`La salida debe ser después de la llegada (${d.entrada}). Intenta de nuevo.`);\n    if (noches(d.entrada, f) > 30) return preguntar('Por este medio solo se reservan hasta 30 noches. Escribe otra fecha de salida.');\n    d.salida = f; s.paso = 'habitacion';\n    return r('disponibilidad', '', { datos: { ...d } });\n  }\n  case 'habitacion': {\n    const numero = texto.replace(/^hab(itaci[oó]n)?\\s*/i, '').trim();\n    const hab = (s.disponibles || []).find((h) => String(h.numero).toLowerCase() === numero.toLowerCase());\n    if (!hab) return preguntar(`No encontré esa habitación. Elige una de estas: ${(s.disponibles || []).map((h) => h.numero).join(', ')}.`);\n    Object.assign(d, { habitacionId: hab.habitacionId, numero: hab.numero, tipo: hab.tipo, numAdultos: Math.min(2, hab.capacidad), total: noches(d.entrada, d.salida) * hab.precioBase });\n    s.paso = 'confirmar_reserva';\n    return preguntar(`Confirma tu reserva:\\n👤 ${d.nombre} ${d.apellidos}\\n📧 ${d.email}\\n🛏️ Habitación ${d.numero} (${d.tipo}) para ${d.numAdultos} adulto(s)\\n📅 Entrada: ${d.entrada}\\n📅 Salida: ${d.salida} (${noches(d.entrada, d.salida)} noche(s))\\n💰 Total: ${mxn(d.total)}\\n\\nResponde SI para confirmar o NO para salir.`);\n  }\n  case 'confirmar_reserva':\n    if (['si', 'sí', 's', 'confirmo', 'confirmar'].includes(cmd)) {\n      delete store.sesiones[chatId];\n      return r('registrar', '', { datos: { ...d, telegramChatId: chatId } });\n    }\n    if (cmd === 'no') { delete store.sesiones[chatId]; return menu('De acuerdo, no registré nada.\\n\\n' + saludo()); }\n    return preguntar('Responde SI para confirmar o NO para salir.');\n\n  // ----- Ver / Cancelar -----\n  case 'codigo': {\n    const c = texto.toUpperCase();\n    if (!/^[0-9A-F]{8}$/.test(c)) return preguntar('Ese código no es válido. Son 8 caracteres (números y letras A-F), por ejemplo 5A570577.');\n    d.codigo = c; s.paso = 'correo_reserva';\n    return preguntar('Por seguridad, escribe el correo con el que hiciste la reserva.');\n  }\n  case 'correo_reserva':\n    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(texto)) return preguntar('Ese correo no parece válido. Ejemplo: nombre@correo.com');\n    d.email = texto.toLowerCase();\n    s.paso = s.op === 'ver' ? 'ver_espera' : 'cancelar_espera';\n    return r('buscar', '', { datos: { codigo: d.codigo, email: d.email, modo: s.op } });\n  case 'cancelar_confirmar':\n    if (['si', 'sí', 's', 'confirmo', 'confirmar'].includes(cmd)) {\n      delete store.sesiones[chatId];\n      return r('cancelar', '', { datos: { reservaId: s.reservaId, codigo: d.codigo, email: d.email } });\n    }\n    if (cmd === 'no') { delete store.sesiones[chatId]; return menu('Listo, tu reserva sigue vigente 👍\\n\\n' + saludo()); }\n    return preguntar('Responde SI para cancelar la reserva o NO para conservarla.');\n\n  case 'confirmar_pendiente':\n    if (['si', 'sí', 's', 'confirmo', 'confirmar'].includes(cmd)) {\n      delete store.sesiones[chatId];\n      return r('confirmar', '', { datos: { reservaId: s.reservaId, codigo: d.codigo } });\n    }\n    if (cmd === 'no') { delete store.sesiones[chatId]; return menu('Está bien, tu reserva sigue pendiente. Puedes confirmarla después desde \"Ver mi reserva\".\\n\\n' + saludo()); }\n    return preguntar('Responde SI para confirmar tu reserva o NO para dejarla pendiente.');\n\n  default:\n    delete store.sesiones[chatId];\n    return menu('Algo salió mal; empecemos de nuevo.\\n\\n' + saludo());\n}\n"
+      },
+      "id": "n12",
+      "name": "Conversación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "n13",
+              "leftValue": "={{ $json.accion }}",
+              "rightValue": "responder",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n14",
+      "name": "¿Solo responder?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuración').first().json.pms_url + `/auth/login` }}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ email: $('Configuración').first().json.pms_email, password: $('Configuración').first().json.pms_password }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n15",
+      "name": "Login PMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "n16",
+                    "leftValue": "={{ $('Conversación').first().json.accion }}",
+                    "rightValue": "disponibilidad",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "disponibilidad"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "n17",
+                    "leftValue": "={{ $('Conversación').first().json.accion }}",
+                    "rightValue": "registrar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "registrar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "n18",
+                    "leftValue": "={{ $('Conversación').first().json.accion }}",
+                    "rightValue": "buscar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "buscar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "n19",
+                    "leftValue": "={{ $('Conversación').first().json.accion }}",
+                    "rightValue": "cancelar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cancelar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "n20",
+                    "leftValue": "={{ $('Conversación').first().json.accion }}",
+                    "rightValue": "confirmar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "confirmar"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n21",
+      "name": "¿Qué operación?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1600,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "n22",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n23",
+      "name": "¿Login correcto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1500,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const c = $('Conversación').first().json;\nconst r = $input.first().json;\nconst motivo = r.statusCode ? `el sistema respondió ${r.statusCode}${r.body && r.body.error ? ': ' + r.body.error : ''}` : 'no se pudo conectar con el sistema';\nreturn [{ json: { chat_id: c.chat_id, texto: `⚠️ El bot no pudo iniciar sesión en el sistema (${motivo}). Avisa a recepción.`, teclado: { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true } } }];"
+      },
+      "id": "n24",
+      "name": "Armar error de acceso",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Configuración').first().json.pms_url + `/disponibilidad` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.body.token }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "entrada",
+              "value": "={{ $('Conversación').first().json.datos.entrada }}"
+            },
+            {
+              "name": "salida",
+              "value": "={{ $('Conversación').first().json.datos.salida }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n25",
+      "name": "Consultar disponibilidad",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        -100
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "try {\nconst MENU = { keyboard: [[{ text: 'Reservar' }], [{ text: 'Ver mi reserva' }], [{ text: 'Cancelar mi reserva' }]], resize_keyboard: true };\nconst FLUJO = { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true };\nconst ESTADOS = { pendiente: 'pendiente de confirmación', confirmada: 'confirmada', checkin: 'en curso (check-in)', checkout: 'finalizada', cancelada: 'cancelada', no_show: 'no se presentó' };\nconst mxn = (n) => `$${Number(n || 0).toFixed(2)} MXN`;\n\n// Respuestas del PMS (con \"full response\"): { statusCode, body }. Se normalizan a listas/objetos simples.\nconst cuerpo = (items) => items.map((i) => i.json).flatMap((j) => { const b = j && j.statusCode !== undefined && 'body' in j ? j.body : j; return Array.isArray(b) ? b : [b]; });\nconst fallo = (items) => items.map((i) => i.json).find((j) => j && typeof j.statusCode === 'number' && j.statusCode >= 400);\nconst motivoFallo = (j) => `${j.statusCode}${j.body && j.body.error ? ': ' + j.body.error : ''}`;\n// Habitaciones libres -> se guardan en la sesión para validar la elección\nconst chatId = $('Conversación').first().json.chat_id;\nconst store = $getWorkflowStaticData('global');\nstore.sesiones = store.sesiones || {};\nconst s = store.sesiones[chatId];\n// La API responde { entrada, salida, noches, disponibles: [...] }; se acepta también una lista de habitaciones sueltas.\nconst errorApi = fallo($input.all());\nif (errorApi) return [{ json: { chat_id: chatId, texto: `⚠️ No pude consultar la disponibilidad (${motivoFallo(errorApi)}). Inténtalo de nuevo en un momento o toca Menú.`, teclado: FLUJO } }];\nconst libres = cuerpo($input.all()).flatMap((j) => (j && Array.isArray(j.disponibles) ? j.disponibles : [j])).filter((h) => h && h.habitacionId !== undefined);\nif (!s) return [{ json: { chat_id: chatId, texto: 'La sesión expiró. Toca \"Reservar\" para empezar de nuevo.', teclado: MENU } }];\nif (libres.length === 0) {\n  s.paso = 'entrada';\n  return [{ json: { chat_id: chatId, texto: 'No hay habitaciones libres en esas fechas 😕. Escribe otra fecha de llegada (AAAA-MM-DD) o toca Menú.', teclado: FLUJO } }];\n}\ns.disponibles = libres;\nconst d = s.datos;\nconst n = Math.round((Date.parse(`${d.salida}T00:00:00Z`) - Date.parse(`${d.entrada}T00:00:00Z`)) / 86400000);\nconst filas = libres.map((h) => `🛏️ ${h.numero} · ${h.tipo} · hasta ${h.capacidad} pers. · ${mxn(h.precioBase)}/noche`);\nreturn [{ json: { chat_id: chatId, texto: `Habitaciones libres del ${d.entrada} al ${d.salida} (${n} noche(s)):\\n\\n${filas.join('\\n')}\\n\\nEscribe el número de la habitación que quieres (por ejemplo 101).`, teclado: FLUJO } }];\n\n} catch (e) {\n  let chat = null;\n  try { chat = $('Conversación').first().json.chat_id; } catch (_) {}\n  return [{ json: { chat_id: chat, texto: '⚠️ Algo salió mal en el bot (' + (e && e.message) + '). Toca \"Menú\" para empezar de nuevo.', teclado: { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true } } }];\n}"
+      },
+      "id": "n26",
+      "name": "Armar lista de habitaciones",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Configuración').first().json.pms_url + `/huespedes` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.body.token }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Conversación').first().json.datos.email }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n27",
+      "name": "Buscar huésped por correo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        140
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "try {\nconst email = String($('Conversación').first().json.datos.email || '').trim().toLowerCase();\nconst lista = $input.all().map((i) => i.json).flatMap((j) => { const b = j && j.statusCode !== undefined && 'body' in j ? j.body : j; return Array.isArray(b) ? b : [b]; });\nconst existente = lista.find((g) => g && g.email && String(g.email).trim().toLowerCase() === email);\nreturn [{ json: { huespedId: existente ? existente.id : null } }];\n} catch (e) {\n  let chat = null;\n  try { chat = $('Conversación').first().json.chat_id; } catch (_) {}\n  return [{ json: { chat_id: chat, texto: '⚠️ Algo salió mal en el bot (' + (e && e.message) + '). Toca \"Menú\" para empezar de nuevo.', teclado: { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true } } }];\n}"
+      },
+      "id": "n28",
+      "name": "Resolver huésped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "n29",
+              "leftValue": "={{ $json.huespedId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n30",
+      "name": "¿Huésped ya existe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2300,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuración').first().json.pms_url + `/huespedes` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.body.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ nombre: $('Conversación').first().json.datos.nombre, apellidos: $('Conversación').first().json.datos.apellidos, email: $('Conversación').first().json.datos.email, telegramChatId: $('Conversación').first().json.datos.telegramChatId }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n31",
+      "name": "Crear huésped",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2520,
+        260
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "try {\nconst prev = $input.first().json;\nconst d = $('Conversación').first().json.datos;\nconst huespedId = prev.huespedId != null ? prev.huespedId : (prev.body && prev.body.id);\nreturn [{ json: { reserva: {\n  huespedId,\n  fechaEntrada: d.entrada,\n  fechaSalida: d.salida,\n  numAdultos: d.numAdultos,\n  origen: 'telegram',\n  estado: 'pendiente',\n  notas: 'Reserva hecha por el bot de Telegram',\n  habitaciones: [{ habitacionId: d.habitacionId }],\n} } }];\n} catch (e) {\n  let chat = null;\n  try { chat = $('Conversación').first().json.chat_id; } catch (_) {}\n  return [{ json: { chat_id: chat, texto: '⚠️ Algo salió mal en el bot (' + (e && e.message) + '). Toca \"Menú\" para empezar de nuevo.', teclado: { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true } } }];\n}"
+      },
+      "id": "n32",
+      "name": "Preparar reserva",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2740,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuración').first().json.pms_url + `/reservas?sinCorreo=1` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.body.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.reserva) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n33",
+      "name": "Crear reserva",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2960,
+        140
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuración').first().json.pms_url + `/reservas/${$json.statusCode === 201 ? $json.body.id : 0}/enviar-correo` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.body.token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n34",
+      "name": "Enviar correo con QR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3180,
+        140
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "try {\nconst MENU = { keyboard: [[{ text: 'Reservar' }], [{ text: 'Ver mi reserva' }], [{ text: 'Cancelar mi reserva' }]], resize_keyboard: true };\nconst FLUJO = { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true };\nconst ESTADOS = { pendiente: 'pendiente de confirmación', confirmada: 'confirmada', checkin: 'en curso (check-in)', checkout: 'finalizada', cancelada: 'cancelada', no_show: 'no se presentó' };\nconst mxn = (n) => `$${Number(n || 0).toFixed(2)} MXN`;\n\n// Resultado de crear la reserva (201 = creada) + resultado del envío del correo con el QR (lo hace este flujo).\nconst c = $('Conversación').first().json;\nconst d = c.datos;\nconst res = $('Crear reserva').first().json; // { statusCode, body }\nconst mail = $input.first().json; // respuesta de \"Enviar correo con QR\" { statusCode, body }\nif (res.statusCode === 201) {\n  const b = res.body;\n  const enviado = mail && mail.statusCode === 200;\n  const correo = enviado\n    ? `\\n\\n📧 Te enviamos la confirmación con tu código QR a ${d.email}. Preséntalo en recepción.`\n    : `\\n\\n⚠️ No pude enviar el correo con tu QR. Guarda tu código ${b.codigo}: con él recepción te atiende igual.`;\n  return [{ json: {\n    chat_id: c.chat_id,\n    texto: `✅ ¡Reserva registrada!\\n🔖 Código: ${b.codigo}\\n👤 ${d.nombre} ${d.apellidos}\\n🛏️ Habitación ${d.numero} (${d.tipo})\\n📅 Entrada: ${d.entrada}\\n📅 Salida: ${d.salida}\\n💰 Total: ${mxn(b.total)}\\n📌 Estado: pendiente (recepción la confirmará)${correo}\\n\\nPuedes consultarla, confirmarla o cancelarla desde el menú con tu código.`,\n    teclado: MENU,\n  } }];\n}\nconst motivo = res.statusCode === 409\n  ? '😕 Esa habitación ya no está disponible para esas fechas (alguien la acaba de reservar). Toca \"Reservar\" para intentar de nuevo.'\n  : `⚠️ No pude registrar la reserva: ${(res.body && res.body.error) || 'error inesperado'}. Toca \"Reservar\" para intentar de nuevo.`;\nreturn [{ json: { chat_id: c.chat_id, texto: motivo, teclado: MENU } }];\n\n} catch (e) {\n  let chat = null;\n  try { chat = $('Conversación').first().json.chat_id; } catch (_) {}\n  return [{ json: { chat_id: chat, texto: '⚠️ Algo salió mal en el bot (' + (e && e.message) + '). Toca \"Menú\" para empezar de nuevo.', teclado: { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true } } }];\n}"
+      },
+      "id": "n35",
+      "name": "Armar respuesta de registro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3400,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Configuración').first().json.pms_url + `/reservas` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.body.token }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Conversación').first().json.datos.codigo }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n36",
+      "name": "Buscar reserva",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        440
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Configuración').first().json.pms_url + `/huespedes` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.body.token }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Conversación').first().json.datos.email }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n37",
+      "name": "Buscar titular por correo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2080,
+        440
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "try {\nconst MENU = { keyboard: [[{ text: 'Reservar' }], [{ text: 'Ver mi reserva' }], [{ text: 'Cancelar mi reserva' }]], resize_keyboard: true };\nconst FLUJO = { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true };\nconst ESTADOS = { pendiente: 'pendiente de confirmación', confirmada: 'confirmada', checkin: 'en curso (check-in)', checkout: 'finalizada', cancelada: 'cancelada', no_show: 'no se presentó' };\nconst mxn = (n) => `$${Number(n || 0).toFixed(2)} MXN`;\n\n// Respuestas del PMS (con \"full response\"): { statusCode, body }. Se normalizan a listas/objetos simples.\nconst cuerpo = (items) => items.map((i) => i.json).flatMap((j) => { const b = j && j.statusCode !== undefined && 'body' in j ? j.body : j; return Array.isArray(b) ? b : [b]; });\nconst fallo = (items) => items.map((i) => i.json).find((j) => j && typeof j.statusCode === 'number' && j.statusCode >= 400);\nconst motivoFallo = (j) => `${j.statusCode}${j.body && j.body.error ? ': ' + j.body.error : ''}`;\n\n// Ver / Cancelar: localiza la reserva y comprueba que el correo sea del titular\nconst c = $('Conversación').first().json;\nconst d = c.datos;\nconst store = $getWorkflowStaticData('global');\nstore.sesiones = store.sesiones || {};\nconst s = store.sesiones[c.chat_id];\nconst salida = (texto, teclado) => [{ json: { chat_id: c.chat_id, texto, teclado } }];\nconst errorApi = fallo($('Buscar reserva').all()) || fallo($input.all());\nif (errorApi) {\n  delete store.sesiones[c.chat_id];\n  return salida(`⚠️ No pude consultar tu reserva (${motivoFallo(errorApi)}). Inténtalo de nuevo desde el menú o comunícate con recepción.`, MENU);\n}\nconst mismo = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();\nconst reservas = cuerpo($('Buscar reserva').all()).filter((x) => x && x.codigo);\nconst huespedes = cuerpo($input.all()).filter((g) => g && g.email);\nconst titular = huespedes.find((g) => mismo(g.email, d.email));\nconst rsv = reservas.find((x) => mismo(x.codigo, d.codigo) && titular && x.huespedId === titular.id);\n\nif (!rsv) {\n  delete store.sesiones[c.chat_id];\n  return salida('❌ No encontré una reserva con ese código y ese correo. Revisa los datos e inténtalo de nuevo desde el menú.', MENU);\n}\nconst habs = (rsv.habitaciones || []).map((h) => `${h.numero} (${h.tipo})`).join(', ') || 'Sin asignar';\nconst detalle = `🔖 Reserva ${rsv.codigo}\\n👤 ${rsv.huespedNombre}\\n🛏️ Habitación: ${habs}\\n📅 Entrada: ${rsv.fechaEntrada}\\n📅 Salida: ${rsv.fechaSalida}\\n📌 Estado: ${ESTADOS[rsv.estado] || rsv.estado}\\n💰 Total: ${mxn(rsv.total)}\\n💳 Pagado: ${mxn(rsv.totalPagado)}\\n🧾 Saldo pendiente: ${mxn(rsv.saldo)}`;\n\nif (d.modo === 'ver') {\n  const qr = { qr_reserva_id: rsv.id, qr_codigo: rsv.codigo };\n  if (rsv.estado === 'pendiente' && s) {\n    s.paso = 'confirmar_pendiente';\n    s.reservaId = rsv.id;\n    return [{ json: { chat_id: c.chat_id, teclado: FLUJO, ...qr,\n      texto: `${detalle}\\n\\n¿Quieres confirmar tu reserva ahora? Responde SI para confirmarla o NO para dejarla pendiente.\\nTe mando también tu código QR.` } }];\n  }\n  delete store.sesiones[c.chat_id];\n  return [{ json: { chat_id: c.chat_id, teclado: MENU, ...qr,\n    texto: `${detalle}\\n\\nA continuación te mando el código QR de tu reserva.` } }];\n}\n\nif (!['pendiente', 'confirmada'].includes(rsv.estado)) {\n  delete store.sesiones[c.chat_id];\n  return salida(`${detalle}\\n\\nEsta reserva está \"${ESTADOS[rsv.estado] || rsv.estado}\" y no se puede cancelar por este medio. Comunícate con recepción.`, MENU);\n}\nif (!s) return salida('La sesión expiró. Toca \"Cancelar mi reserva\" para empezar de nuevo.', MENU);\ns.paso = 'cancelar_confirmar';\ns.reservaId = rsv.id;\nreturn salida(`${detalle}\\n\\n¿Confirmas la cancelación de esta reserva? Responde SI o NO.`, FLUJO);\n\n} catch (e) {\n  let chat = null;\n  try { chat = $('Conversación').first().json.chat_id; } catch (_) {}\n  return [{ json: { chat_id: chat, texto: '⚠️ Algo salió mal en el bot (' + (e && e.message) + '). Toca \"Menú\" para empezar de nuevo.', teclado: { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true } } }];\n}"
+      },
+      "id": "n38",
+      "name": "Resolver reserva",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2300,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Configuración').first().json.pms_url + '/reservas/' + $('Conversación').first().json.datos.reservaId + '/estado' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.body.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ estado: \"cancelada\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n39",
+      "name": "Cancelar reserva",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        640
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "try {\nconst MENU = { keyboard: [[{ text: 'Reservar' }], [{ text: 'Ver mi reserva' }], [{ text: 'Cancelar mi reserva' }]], resize_keyboard: true };\nconst FLUJO = { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true };\nconst ESTADOS = { pendiente: 'pendiente de confirmación', confirmada: 'confirmada', checkin: 'en curso (check-in)', checkout: 'finalizada', cancelada: 'cancelada', no_show: 'no se presentó' };\nconst mxn = (n) => `$${Number(n || 0).toFixed(2)} MXN`;\n\n// Resultado del PATCH /reservas/:id/estado (200 = cancelada)\nconst c = $('Conversación').first().json;\nconst res = $input.first().json; // { statusCode, body }\nif (res.statusCode === 200) {\n  return [{ json: { chat_id: c.chat_id, teclado: MENU,\n    texto: `✅ Tu reserva ${c.datos.codigo} fue cancelada.\\nSi ya habías hecho algún pago, consulta con recepción las condiciones.\\n\\nCuando quieras volver a reservar, toca \"Reservar\".` } }];\n}\nreturn [{ json: { chat_id: c.chat_id, teclado: MENU,\n  texto: `⚠️ No pude cancelar la reserva: ${(res.body && res.body.error) || 'error inesperado'}. Comunícate con recepción.` } }];\n\n} catch (e) {\n  let chat = null;\n  try { chat = $('Conversación').first().json.chat_id; } catch (_) {}\n  return [{ json: { chat_id: chat, texto: '⚠️ Algo salió mal en el bot (' + (e && e.message) + '). Toca \"Menú\" para empezar de nuevo.', teclado: { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true } } }];\n}"
+      },
+      "id": "n40",
+      "name": "Armar respuesta de cancelación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Configuración').first().json.pms_url + '/reservas/' + $('Conversación').first().json.datos.reservaId + '/estado' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.body.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ estado: \"confirmada\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "n41",
+      "name": "Confirmar reserva",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1860,
+        840
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "try {\nconst MENU = { keyboard: [[{ text: 'Reservar' }], [{ text: 'Ver mi reserva' }], [{ text: 'Cancelar mi reserva' }]], resize_keyboard: true };\n\n// Resultado del PATCH /reservas/:id/estado (200 = confirmada)\nconst c = $('Conversación').first().json;\nconst res = $input.first().json; // { statusCode, body }\nif (res.statusCode === 200) {\n  return [{ json: { chat_id: c.chat_id, teclado: MENU,\n    texto: `✅ ¡Tu reserva ${c.datos.codigo} quedó confirmada!\\nPresenta tu código QR en recepción al llegar.\\n\\nCuando quieras, toca \"Ver mi reserva\" para ver el QR de nuevo.` } }];\n}\nreturn [{ json: { chat_id: c.chat_id, teclado: MENU,\n  texto: `⚠️ No pude confirmar la reserva: ${(res.body && res.body.error) || 'error inesperado'}. Comunícate con recepción.` } }];\n\n} catch (e) {\n  let chat = null;\n  try { chat = $('Conversación').first().json.chat_id; } catch (_) {}\n  return [{ json: { chat_id: chat, texto: '⚠️ Algo salió mal en el bot (' + (e && e.message) + '). Toca \"Menú\" para empezar de nuevo.', teclado: { keyboard: [[{ text: 'Menú' }]], resize_keyboard: true } } }];\n}"
+      },
+      "id": "n42",
+      "name": "Armar respuesta de confirmación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        840
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $('Configuración').first().json.token + '/sendMessage' }}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.texto, reply_markup: $json.teclado }) }}",
+        "options": {}
+      },
+      "id": "n43",
+      "name": "Telegram - Enviar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3900,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const fuentes = ['Resolver reserva'];\nfor (const nombre of fuentes) {\n  let j = null;\n  try { j = $(nombre).first().json; } catch (e) { j = null; }\n  if (j && j.qr_reserva_id) return [{ json: { chat_id: j.chat_id, qr_reserva_id: j.qr_reserva_id, qr_codigo: j.qr_codigo, teclado: j.teclado } }];\n}\nreturn [];"
+      },
+      "id": "n44",
+      "name": "Datos del QR",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4120,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Configuración').first().json.pms_url + '/reservas/' + $json.qr_reserva_id + '/qr?descargar=1' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Login PMS').first().json.body.token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "n45",
+      "name": "Descargar QR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4340,
+        -120
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $('Configuración').first().json.token + '/sendPhoto' }}",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "photo",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "chat_id",
+              "value": "={{ $('Datos del QR').first().json.chat_id }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ '🔖 Reserva ' + $('Datos del QR').first().json.qr_codigo + ' — muestra este QR en recepción' }}"
+            },
+            {
+              "name": "reply_markup",
+              "value": "={{ JSON.stringify($('Datos del QR').first().json.teclado) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n46",
+      "name": "Telegram - Enviar QR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4560,
+        -120
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Configuración",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuración": {
+      "main": [
+        [
+          {
+            "node": "Obtener offset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener offset": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Recibir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Recibir": {
+      "main": [
+        [
+          {
+            "node": "Procesar mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar mensaje": {
+      "main": [
+        [
+          {
+            "node": "Confirmar mensaje en Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar mensaje en Telegram": {
+      "main": [
+        [
+          {
+            "node": "Conversación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversación": {
+      "main": [
+        [
+          {
+            "node": "¿Solo responder?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Solo responder?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Enviar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Login PMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login PMS": {
+      "main": [
+        [
+          {
+            "node": "¿Login correcto?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Login correcto?": {
+      "main": [
+        [
+          {
+            "node": "¿Qué operación?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Armar error de acceso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar error de acceso": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Qué operación?": {
+      "main": [
+        [
+          {
+            "node": "Consultar disponibilidad",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar huésped por correo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar reserva",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cancelar reserva",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirmar reserva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar disponibilidad": {
+      "main": [
+        [
+          {
+            "node": "Armar lista de habitaciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar lista de habitaciones": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar huésped por correo": {
+      "main": [
+        [
+          {
+            "node": "Resolver huésped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolver huésped": {
+      "main": [
+        [
+          {
+            "node": "¿Huésped ya existe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Huésped ya existe?": {
+      "main": [
+        [
+          {
+            "node": "Preparar reserva",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Crear huésped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear huésped": {
+      "main": [
+        [
+          {
+            "node": "Preparar reserva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar reserva": {
+      "main": [
+        [
+          {
+            "node": "Crear reserva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear reserva": {
+      "main": [
+        [
+          {
+            "node": "Enviar correo con QR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar correo con QR": {
+      "main": [
+        [
+          {
+            "node": "Armar respuesta de registro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar respuesta de registro": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Enviar": {
+      "main": [
+        [
+          {
+            "node": "Datos del QR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Datos del QR": {
+      "main": [
+        [
+          {
+            "node": "Descargar QR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Descargar QR": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Enviar QR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar reserva": {
+      "main": [
+        [
+          {
+            "node": "Buscar titular por correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar titular por correo": {
+      "main": [
+        [
+          {
+            "node": "Resolver reserva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolver reserva": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancelar reserva": {
+      "main": [
+        [
+          {
+            "node": "Armar respuesta de cancelación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar respuesta de cancelación": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar reserva": {
+      "main": [
+        [
+          {
+            "node": "Armar respuesta de confirmación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar respuesta de confirmación": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

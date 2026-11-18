@@ -1,0 +1,264 @@
+/* =====================================================================
+   Tema del PMS sobre Bootstrap 5.3: paleta vino / crema / café.
+   Se carga DESPUÉS de bootstrap.min.css y sobreescribe sus variables.
+   ===================================================================== */
+:root {
+  --vino: #4a1521;
+  --vino-hover: #5e1b2b;
+  --cafe: #2c1e1b;
+  --cafe-tierra: #6f4e37;
+  --cafe-claro: #9a7b63;
+  --hueso: #fdfbf7;
+  --hueso-alt: #f9f6f0;
+  --hueso-arena: #f3e9dc;
+  --hueso-borde: #e7dccb;
+  --sombra-suave: 0 1px 2px rgba(44, 30, 27, 0.06), 0 4px 14px rgba(44, 30, 27, 0.05);
+
+  --bs-body-font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --bs-body-color: var(--cafe);
+  --bs-body-color-rgb: 44, 30, 27;
+  --bs-body-bg: var(--hueso);
+  --bs-body-bg-rgb: 253, 251, 247;
+  --bs-secondary-color: var(--cafe-tierra);
+  --bs-secondary-bg: var(--hueso-arena);
+  --bs-tertiary-bg: var(--hueso-alt);
+  --bs-border-color: var(--hueso-borde);
+  --bs-primary: #4a1521;
+  --bs-primary-rgb: 74, 21, 33;
+  --bs-secondary: #6f4e37;
+  --bs-secondary-rgb: 111, 78, 55;
+  --bs-success: #047857;
+  --bs-success-rgb: 4, 120, 87;
+  --bs-warning: #b45309;
+  --bs-warning-rgb: 180, 83, 9;
+  --bs-danger: #991b1b;
+  --bs-danger-rgb: 153, 27, 27;
+  --bs-link-color: #4a1521;
+  --bs-link-color-rgb: 74, 21, 33;
+  --bs-link-hover-color: #5e1b2b;
+  --bs-link-hover-color-rgb: 94, 27, 43;
+  --bs-border-radius: 0.5rem;
+  --bs-border-radius-lg: 0.625rem;
+  --bs-focus-ring-color: rgba(74, 21, 33, 0.25);
+}
+
+body { background: var(--hueso); color: var(--cafe); -webkit-font-smoothing: antialiased; }
+
+h1, h2, h3, h4, .font-serif, .pms-titulo {
+  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  font-variant-numeric: lining-nums;
+  font-weight: 600;
+}
+
+* { scrollbar-width: thin; scrollbar-color: #c9b8a3 transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background-color: #c9b8a3; border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- Botones ---------- */
+.btn { --bs-btn-font-weight: 600; letter-spacing: 0.01em; }
+.btn-primary {
+  --bs-btn-bg: var(--vino); --bs-btn-border-color: var(--vino); --bs-btn-color: var(--hueso);
+  --bs-btn-hover-bg: var(--vino-hover); --bs-btn-hover-border-color: var(--vino-hover); --bs-btn-hover-color: #fff;
+  --bs-btn-active-bg: #3a1019; --bs-btn-active-border-color: #3a1019; --bs-btn-active-color: #fff;
+  --bs-btn-disabled-bg: var(--vino); --bs-btn-disabled-border-color: var(--vino);
+  --bs-btn-focus-shadow-rgb: 74, 21, 33;
+}
+.btn-outline-secondary {
+  --bs-btn-color: var(--cafe-tierra); --bs-btn-border-color: rgba(111, 78, 55, 0.4);
+  --bs-btn-hover-bg: var(--hueso-arena); --bs-btn-hover-border-color: var(--cafe-tierra); --bs-btn-hover-color: var(--cafe);
+  --bs-btn-active-bg: var(--hueso-arena); --bs-btn-active-border-color: var(--cafe-tierra); --bs-btn-active-color: var(--cafe);
+  --bs-btn-focus-shadow-rgb: 111, 78, 55;
+}
+.btn-outline-primary {
+  --bs-btn-color: var(--vino); --bs-btn-border-color: var(--vino);
+  --bs-btn-hover-bg: var(--vino); --bs-btn-hover-border-color: var(--vino); --bs-btn-hover-color: #fff;
+  --bs-btn-active-bg: var(--vino); --bs-btn-active-border-color: var(--vino);
+}
+.btn-outline-danger { --bs-btn-color: #991b1b; --bs-btn-border-color: #f1a9a9; --bs-btn-hover-bg: #fdecec; --bs-btn-hover-color: #7f1d1d; --bs-btn-hover-border-color: #e58a8a; --bs-btn-active-bg: #fdecec; --bs-btn-active-color: #7f1d1d; }
+
+/* ---------- Formularios ---------- */
+.form-control, .form-select { border-color: rgba(111, 78, 55, 0.3); background-color: #fff; color: var(--cafe); }
+.form-control::placeholder { color: rgba(154, 123, 99, 0.8); }
+.form-control:focus, .form-select:focus { border-color: var(--vino); box-shadow: 0 0 0 0.2rem rgba(74, 21, 33, 0.15); }
+.form-label, .pms-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cafe-tierra); margin-bottom: 0.25rem; }
+.form-check-input:checked { background-color: var(--vino); border-color: var(--vino); }
+.form-check-input:focus { border-color: var(--vino); box-shadow: 0 0 0 0.2rem rgba(74, 21, 33, 0.15); }
+
+/* ---------- Tarjetas y superficies ---------- */
+.pms-card { background: #fff; border: 1px solid var(--hueso-borde); border-radius: 10px; box-shadow: var(--sombra-suave); }
+.pms-card-arena { background: var(--hueso-arena); border: 1px solid var(--hueso-borde); border-radius: 10px; }
+.pms-kicker { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--cafe-claro); }
+.pms-titulo { font-size: 2.4rem; line-height: 1.1; color: var(--vino); margin: 0; }
+.pms-subtitulo { color: var(--cafe-tierra); font-size: 0.9rem; }
+.pms-cifra { font-family: 'Cormorant Garamond', Georgia, serif; font-variant-numeric: lining-nums; font-weight: 600; font-size: 2rem; line-height: 1; }
+.pms-aviso { background: var(--hueso-arena); border-radius: 0.5rem; padding: 0.5rem 0.75rem; font-size: 0.8rem; color: var(--cafe); }
+.text-vino { color: var(--vino) !important; }
+.text-tierra { color: var(--cafe-tierra) !important; }
+.text-claro { color: var(--cafe-claro) !important; }
+.bg-arena { background-color: var(--hueso-arena) !important; }
+.border-hueso { border-color: var(--hueso-borde) !important; }
+
+/* ---------- Tablas ---------- */
+.pms-tabla { --bs-table-bg: transparent; margin: 0; font-size: 0.875rem; }
+.pms-tabla thead th { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--cafe-tierra); background: var(--hueso-alt); border-bottom: 1px solid var(--hueso-borde); padding: 0.7rem 1rem; white-space: nowrap; }
+.pms-tabla tbody td { padding: 0.75rem 1rem; vertical-align: middle; border-color: var(--hueso-borde); }
+.pms-tabla tbody tr.fila-click { cursor: pointer; }
+.pms-tabla tbody tr.fila-click:hover > * { background: var(--hueso-alt); }
+.pms-tabla tbody tr.fila-activa > * { background: var(--hueso-arena); }
+
+/* ---------- Estados de reserva (insignias) ---------- */
+.estado-badge { display: inline-block; white-space: nowrap; border: 1px solid; border-radius: 999px; padding: 0.2rem 0.6rem; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.estado-pendiente { background: #fef3c7; color: #78350f; border-color: #fcd34d; }
+.estado-confirmada { background: var(--hueso-arena); color: var(--cafe-tierra); border-color: rgba(111, 78, 55, 0.3); }
+.estado-checkin { background: var(--vino); color: var(--hueso); border-color: var(--vino); }
+.estado-checkout { background: #d1fae5; color: #064e3b; border-color: #6ee7b7; }
+.estado-cancelada { background: #fee2e2; color: #7f1d1d; border-color: #fca5a5; }
+.estado-no_show { background: #e7e5e4; color: #44403c; border-color: #d6d3d1; }
+
+/* ---------- Habitaciones ---------- */
+.hab { display: block; width: 100%; text-align: left; border: 1px solid; border-radius: 10px; padding: 1rem; box-shadow: var(--sombra-suave); transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s, background 0.12s; }
+.hab:hover { transform: translateY(-1px); }
+.hab.activa { outline: 2px solid var(--vino); outline-offset: 2px; }
+.hab-disponible { background: #fff; border-color: rgba(111, 78, 55, 0.2); color: var(--cafe); }
+.hab-disponible:hover { border-color: rgba(111, 78, 55, 0.5); }
+.hab-ocupada { background: var(--vino); border-color: var(--vino); color: var(--hueso); }
+.hab-ocupada:hover { background: var(--vino-hover); }
+.hab-limpieza { background: var(--hueso-arena); border-color: rgba(111, 78, 55, 0.4); color: var(--cafe); }
+.hab-mantenimiento { background: var(--cafe); border-color: var(--cafe); color: rgba(253, 251, 247, 0.9); }
+.punto { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; flex: none; }
+.punto-disponible { background: #047857; }
+.punto-ocupada { background: var(--vino); }
+.punto-limpieza { background: #d97706; }
+.punto-mantenimiento { background: var(--cafe); }
+.hab-ocupada .punto-ocupada { background: var(--hueso); }
+.hab-mantenimiento .punto-mantenimiento { background: #a8a29e; }
+
+/* ---------- Estructura de la app ---------- */
+.pms-app { height: 100vh; display: flex; flex-direction: column; background: var(--hueso); }
+.pms-cuerpo { flex: 1; display: flex; min-height: 0; }
+.pms-main { flex: 1; min-width: 0; overflow-y: auto; background: var(--hueso); }
+.pms-pagina { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 6rem; }
+@media (min-width: 768px) { .pms-pagina { padding: 2.5rem 2.5rem 6rem; } }
+
+.pms-sidebar { width: 232px; flex: none; background: var(--cafe); color: var(--hueso); display: none; flex-direction: column; overflow-y: auto; }
+@media (min-width: 768px) { .pms-sidebar { display: flex; } }
+.pms-marca { padding: 1.5rem 1.25rem 1.25rem; border-bottom: 1px solid rgba(253, 251, 247, 0.1); }
+.pms-marca .nombre { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 1.55rem; font-weight: 600; color: var(--hueso); line-height: 1.1; }
+.pms-marca .sub { font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(253, 251, 247, 0.5); }
+.pms-nav { padding: 0.75rem; display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.pms-nav a, .pms-nav button { display: flex; align-items: center; gap: 0.7rem; padding: 0.6rem 0.8rem; border-radius: 8px; color: rgba(253, 251, 247, 0.72); text-decoration: none; font-size: 0.875rem; font-weight: 500; background: none; border: 0; width: 100%; text-align: left; transition: background 0.12s, color 0.12s; }
+.pms-nav a:hover, .pms-nav button:hover { background: rgba(253, 251, 247, 0.08); color: var(--hueso); }
+.pms-nav a.active { background: var(--vino); color: var(--hueso); }
+.pms-nav .bi { font-size: 1rem; width: 1.1rem; text-align: center; }
+.pms-nav-pie { padding: 0.75rem; border-top: 1px solid rgba(253, 251, 247, 0.1); }
+.pms-usuario { padding: 0.5rem 0.8rem 0.75rem; font-size: 0.8rem; color: rgba(253, 251, 247, 0.85); }
+.pms-usuario small { display: block; color: rgba(253, 251, 247, 0.5); font-size: 0.68rem; }
+
+.pms-detalle { width: 360px; flex: none; background: #fff; border-left: 1px solid var(--hueso-borde); overflow-y: auto; display: none; }
+@media (min-width: 1200px) { .pms-detalle { display: block; } }
+.pms-detalle-vacio { height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2rem; color: var(--cafe-claro); font-size: 0.9rem; }
+
+.pms-bottombar { flex: none; background: #fff; border-top: 1px solid var(--hueso-borde); padding: 0.55rem 1rem; font-size: 0.8rem; }
+
+/* Barra inferior de navegación en móvil */
+.pms-movil { display: flex; background: var(--cafe); }
+@media (min-width: 768px) { .pms-movil { display: none; } }
+.pms-movil a { flex: 1; text-align: center; color: rgba(253, 251, 247, 0.7); text-decoration: none; padding: 0.5rem 0.25rem; font-size: 0.65rem; }
+.pms-movil a .bi { display: block; font-size: 1.15rem; }
+.pms-movil a.active { color: #fff; background: var(--vino); }
+
+/* ---------- Modal controlado por React (sin JS de Bootstrap) ---------- */
+.modal.pms-modal { display: block; overflow-y: auto; }
+.modal-content { background: var(--hueso); border: 0; border-radius: 12px; box-shadow: 0 20px 50px rgba(44, 30, 27, 0.25); }
+.modal-header { border-bottom: 1px solid var(--hueso-borde); padding: 1rem 1.5rem; }
+.modal-title { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 1.7rem; font-weight: 600; color: var(--vino); }
+.modal-body { padding: 1.25rem 1.5rem; }
+.modal-backdrop { --bs-backdrop-bg: var(--cafe); --bs-backdrop-opacity: 0.6; }
+
+/* ---------- Login ---------- */
+.pms-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: radial-gradient(1200px 600px at 10% -10%, var(--hueso-arena), transparent), var(--hueso); }
+
+/* ---------- Varios ---------- */
+.nav-tabs .nav-link, .nav-pills .nav-link { color: var(--cafe-tierra); font-weight: 500; font-size: 0.875rem; }
+.nav-pills .nav-link.active { background: var(--vino); color: var(--hueso); }
+.nav-tabs .nav-link.active { color: var(--vino); border-color: var(--hueso-borde) var(--hueso-borde) var(--hueso); background: var(--hueso); }
+.progress { background: var(--hueso-arena); }
+.progress-bar { background: var(--vino); }
+
+/* ---------- Grupo: huéspedes / usuarios / estadísticas ---------- */
+.tabular { font-variant-numeric: tabular-nums; }
+.pms-card-vino { background: var(--vino); color: var(--hueso); border-radius: 10px; box-shadow: var(--sombra-suave); }
+.pms-kicker-claro { color: rgba(253, 251, 247, 0.7); }
+.pms-detalle-claro { color: rgba(253, 251, 247, 0.7); }
+.overflow-x-auto { overflow-x: auto; }
+
+.grafica-columnas { display: flex; align-items: flex-end; gap: 0.5rem; height: 14rem; }
+.grafica-columna { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; text-align: center; }
+.grafica-valor { margin-bottom: 0.25rem; font-size: 0.62rem; color: var(--cafe-tierra); white-space: nowrap; }
+.grafica-barra { width: 100%; border-radius: 4px 4px 0 0; background: rgba(111, 78, 55, 0.6); }
+.grafica-barra-actual { background: var(--vino); }
+.grafica-ejes { display: flex; gap: 0.5rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--hueso-borde); }
+.grafica-ejes span { flex: 1; text-align: center; font-size: 0.62rem; color: var(--cafe-tierra); }
+
+.barra-desenlace { display: flex; width: 8rem; height: 0.65rem; overflow: hidden; border-radius: 999px; background: var(--hueso-arena); }
+.seg-llegaron { background: #059669; }
+.seg-porllegar { background: #a8a29e; }
+.seg-noshow { background: #f59e0b; }
+.seg-canceladas { background: #b91c1c; }
+
+/* ---------- Grupo: layout / login / perfil / escanear ---------- */
+.pms-detalle-tab { display: none; width: 2.5rem; flex: none; align-items: center; justify-content: center; border: 0; border-left: 1px solid var(--hueso-borde); background: #fff; color: var(--cafe-tierra); }
+.pms-detalle-tab:hover { color: var(--vino); }
+@media (min-width: 1200px) { .pms-detalle-tab { display: flex; } }
+.pms-detalle dl dt, .pms-detalle dl dd { margin: 0; }
+.pms-sidebar .btn-outline-light { --bs-btn-border-color: rgba(253, 251, 247, 0.3); --bs-btn-hover-bg: rgba(253, 251, 247, 0.1); --bs-btn-hover-color: var(--hueso); --bs-btn-hover-border-color: rgba(253, 251, 247, 0.5); }
+
+/* ---------- Grupo: panel, reservas, habitaciones ---------- */
+.min-w-0 { min-width: 0; }
+.celda-detalle { font-size: 0.75rem; }
+.filtro-busqueda { max-width: 20rem; }
+.filtro-estado { max-width: 12rem; }
+
+.resumen-ocupacion { background: var(--vino); color: var(--hueso); border-radius: 10px; box-shadow: var(--sombra-suave); }
+.resumen-ocupacion-kicker { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.14em; color: rgba(253, 251, 247, 0.7); }
+.resumen-ocupacion-cifra { font-size: 3rem; }
+.resumen-ocupacion-suave { color: rgba(253, 251, 247, 0.7); }
+.resumen-ocupacion-barra { height: 6px; border-radius: 999px; background: rgba(253, 251, 247, 0.2); overflow: hidden; }
+.resumen-ocupacion-relleno { height: 100%; background: var(--hueso); transition: width 0.3s; }
+
+.hab-estado { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.8; }
+.hab .pms-cifra { font-size: 1.9rem; }
+
+.operacion-fila { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; padding: 0.7rem 1rem; text-align: left; background: transparent; border: 0; transition: background 0.12s; }
+.operacion-fila:hover { background: var(--hueso-alt); }
+.operacion-fila.activa { background: var(--hueso-arena); }
+.operacion-codigo { font-size: 0.75rem; letter-spacing: 0.1em; }
+.operacion-hab { font-size: 1.25rem; }
+
+.opcion-habitacion { border: 1px solid rgba(111, 78, 55, 0.2); background: #fff; border-radius: 10px; padding: 0.75rem; transition: background 0.12s, border-color 0.12s; }
+.opcion-habitacion.elegida { border-color: var(--vino); background: rgba(74, 21, 33, 0.05); }
+.resultado-huesped { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.875rem; text-align: left; background: transparent; border: 0; color: var(--cafe); }
+.resultado-huesped:hover { background: var(--hueso-alt); }
+
+/* Ajustes tras revisión visual */
+.pms-primera-mayus { display: block; }
+.pms-primera-mayus::first-letter { text-transform: uppercase; }
+.hab-estado { font-size: 0.6rem; letter-spacing: 0.05em; white-space: nowrap; }
+.pms-card .pms-kicker { letter-spacing: 0.08em; }
+.pms-card .pms-cifra, .pms-card-vino .pms-cifra { font-size: 1.7rem; overflow-wrap: anywhere; }
+input[aria-label="Código de reserva"]:placeholder-shown { text-transform: none; letter-spacing: normal; font-family: inherit; }
+
+/* Ajustes tras segunda revisión visual */
+.pms-card .pms-cifra, .pms-card-vino .pms-cifra { font-size: 1.55rem; white-space: nowrap; overflow-wrap: normal; }
+.hab .pms-cifra { font-size: 1.9rem; }
+input.form-control.text-uppercase::placeholder, input[aria-label="Código de reserva"]::placeholder { text-transform: none; letter-spacing: normal; font-family: inherit; }
+
+/* Logo de Checkzal: insignia crema para que se lea sobre fondos oscuros */
+.pms-logo { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex: none; border-radius: 12px; background: var(--hueso); padding: 2px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); }
+.pms-logo img { width: 100%; height: 100%; object-fit: contain; }
+.pms-logo-lg { width: 60px; height: 60px; border-radius: 16px; padding: 3px; }
+
+/* Logo grande, centrado en la parte superior de la barra lateral */
+.pms-logo-xl { width: 84px; height: 84px; border-radius: 20px; padding: 4px; }
+.pms-marca { padding: 1.5rem 1rem 1.25rem; }

@@ -1,0 +1,24 @@
+[Unit]
+Description=PMS Boutique - API (Node.js)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=hotelpms
+Group=hotelpms
+WorkingDirectory=/opt/hotel-pms/backend
+EnvironmentFile=/opt/hotel-pms/backend/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=5
+
+# Endurecimiento básico
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
